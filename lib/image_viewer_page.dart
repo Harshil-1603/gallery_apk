@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:photo_view/photo_view.dart';
@@ -7,27 +8,30 @@ class ImageViewerPage extends StatefulWidget {
   final List<AssetEntity> images;
   final int initialIndex;
 
-  ImageViewerPage({required this.images, required this.initialIndex});
+  const ImageViewerPage({Key? key, required this.images, required this.initialIndex}) : super(key: key);
 
   @override
   _ImageViewerPageState createState() => _ImageViewerPageState();
 }
 
 class _ImageViewerPageState extends State<ImageViewerPage> {
-  late PageController _pageController;
+  List<Uint8List?> imageData = [];
 
   @override
   void initState() {
     super.initState();
-    _pageController = PageController(initialPage: widget.initialIndex);
+    _loadImages();
   }
 
-  Future<MemoryImage?> getImageProvider(AssetEntity asset) async {
-    final file = await asset.originBytes;
-    if (file != null) {
-      return MemoryImage(file);
+  Future<void> _loadImages() async {
+    List<Uint8List?> tempData = [];
+    for (var image in widget.images) {
+      Uint8List? data = await image.thumbnailDataWithSize(ThumbnailSize(1000, 1000));
+      tempData.add(data);
     }
-    return null;
+    setState(() {
+      imageData = tempData;
+    });
   }
 
   @override
@@ -36,27 +40,23 @@ class _ImageViewerPageState extends State<ImageViewerPage> {
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.black,
+        iconTheme: IconThemeData(color: Colors.white),
       ),
-      body: PhotoViewGallery.builder(
-        itemCount: widget.images.length,
-        pageController: _pageController,
-        builder: (context, index) {
-          return PhotoViewGalleryPageOptions.customChild(
-            child: FutureBuilder<MemoryImage?>(
-              future: getImageProvider(widget.images[index]),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.done && snapshot.data != null) {
-                  return Image(image: snapshot.data!);
-                } else {
-                  return Center(child: CircularProgressIndicator());
-                }
+      body: imageData.isEmpty
+          ? Center(child: CircularProgressIndicator()) // Show loader until images are loaded
+          : PhotoViewGallery.builder(
+              itemCount: widget.images.length,
+              pageController: PageController(initialPage: widget.initialIndex),
+              builder: (context, index) {
+                return PhotoViewGalleryPageOptions(
+                  imageProvider: MemoryImage(imageData[index]!),
+                  minScale: PhotoViewComputedScale.contained,
+                  maxScale: PhotoViewComputedScale.covered * 2.0,
+                  heroAttributes: PhotoViewHeroAttributes(tag: widget.images[index].id),
+                );
               },
+              scrollPhysics: BouncingScrollPhysics(),
             ),
-            minScale: PhotoViewComputedScale.contained,
-            maxScale: PhotoViewComputedScale.covered * 2,
-          );
-        },
-      ),
     );
   }
 }
